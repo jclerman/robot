@@ -32,6 +32,25 @@ See [release-diff.txt](/examples/release-diff.txt) for an example.
 
 The default "plain" output is in OWL Functional syntax with IRIs. You can include entity labels with `--labels true`. In addition, Markdown and HTML diff formats (based on Manchester syntax) are available. You can select the desired format using the `--format` (or `-f`) option, with possible values `plain`, `pretty` (text with labels and CURIEs), `html`, or `markdown`.
 
+### Label Languages
+
+When an entity has labels in more than one language, you can control which one is shown in the `pretty` format with `--label-langs-priority`, a comma-separated list of [language tags](https://www.rfc-editor.org/info/bcp47) in priority order:
+
+    robot diff --left edit.owl \
+      --right release.owl \
+      --labels true \
+      --label-langs-priority en-GB,en,fr \
+      --output results/release-diff.txt
+
+Selection rules:
+
+- The first language in the list that has a matching label wins. A more general tag matches a more specific one — for example, `en` matches `en-GB` — unless the specific tag is itself listed.
+- Use the token `none` to prefer labels that have no language tag (for example, `--label-langs-priority en,none`).
+- When more than one label matches (for example, two labels tagged `en`), the alphabetically first is chosen.
+- If an entity has labels but none in a preferred language, its alphabetically first label is used, so a labelled entity is never shown as its IRI. Entities with no label at all are unaffected.
+
+This option currently applies only to the `pretty` format; the `markdown` and `html` formats are not yet affected.
+
 You can also compare ontologies by IRI with `--left-iri` and `--right-iri`. You may want to compare a local file to a release, in which case:
 <!-- DO NOT TEST -->
 ```
