@@ -117,6 +117,31 @@ public class LanguagePreferenceTest {
     assertEquals("zzz", LanguagePreference.selectValue(cs, Arrays.asList("en", "en-GB")));
   }
 
+  /** The "*" wildcard (RFC 4647 basic filtering) matches any tag as a catch-all. */
+  @Test
+  public void testWildcardCatchAll() {
+    List<LanguagePreference.Candidate> cs = candidates("de", "Zebra", "fr", "Apfel");
+    // No en label exists, but "*" matches both; among them the alphanumerically-first wins.
+    assertEquals("Apfel", LanguagePreference.selectPreferred(cs, Arrays.asList("en", "*")));
+    // Without the wildcard there is no preferred match at all.
+    assertNull(LanguagePreference.selectPreferred(cs, Collections.singletonList("en")));
+  }
+
+  /** A concrete tag is more specific than the wildcard, so a listed language is preferred. */
+  @Test
+  public void testWildcardIsLeastSpecific() {
+    List<LanguagePreference.Candidate> cs = candidates("en", "dog", "de", "Hund");
+    // "en" binds the English label (exact, index 0); the German label only matches "*" (index 1).
+    assertEquals("dog", LanguagePreference.selectValue(cs, Arrays.asList("en", "*")));
+  }
+
+  /** The wildcard also matches an untagged literal. */
+  @Test
+  public void testWildcardMatchesUntagged() {
+    List<LanguagePreference.Candidate> cs = candidates((String) null, "plain");
+    assertEquals("plain", LanguagePreference.selectValue(cs, Collections.singletonList("*")));
+  }
+
   /** The no-lang token matches an untagged literal. */
   @Test
   public void testNoLangToken() {

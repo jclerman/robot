@@ -16,7 +16,8 @@ import java.util.Locale;
  *       a broader entry matches a more specific tag (e.g. {@code en} matches {@code en-GB}); when a
  *       tag matches several entries, the longest (most specific) entry wins. So with {@code en,
  *       en-GB} a value tagged {@code en-GB} binds to the {@code en-GB} entry, while a value tagged
- *       {@code en-US} binds by cascade to {@code en}.
+ *       {@code en-US} binds by cascade to {@code en}. The {@link #WILDCARD} ({@code *}) matches any
+ *       tag but is less specific than every real tag.
  *   <li>The value bound to the <em>earliest</em> entry in the list wins. Listing a specific tag
  *       after a general one therefore deprioritizes it: with {@code en, en-GB}, {@code en-GB}
  *       labels are used only when nothing binds to {@code en}.
@@ -27,6 +28,12 @@ import java.util.Locale;
  *       alphanumerically-first value is chosen, so that a labelled entity never regresses to its
  *       IRI merely because its language is unlisted.
  * </ol>
+ *
+ * <p>The per-tag match rule (exact, or a prefix followed by {@code -}, plus the {@code *} wildcard)
+ * is that of <a href="https://www.rfc-editor.org/rfc/rfc4647.html">RFC 4647</a> Basic Filtering.
+ * This class then applies the list's priority order and the tie-breaks above to choose a single
+ * value; that single-value selection is not RFC 4647 "Lookup" (Lookup would never let {@code en}
+ * select an {@code en-GB} value), and the most-specific binding in rule 1 is a ROBOT extension.
  *
  * <p>The token {@link #NO_LANG_TOKEN} in a preference list refers to values that have no language
  * tag (the OWL API represents these with an empty language string).
@@ -41,6 +48,12 @@ public class LanguagePreference {
 
   /** The long name of the command-line option used to supply a language preference list. */
   public static final String OPTION_NAME = "label-langs-priority";
+
+  /**
+   * The RFC 4647 basic-filtering wildcard: as a preference entry it matches any language tag. It is
+   * the least specific match, so any concrete tag match is preferred over it.
+   */
+  public static final String WILDCARD = "*";
 
   /** The OWL API's internal representation of "no language tag". */
   private static final String NO_LANG = "";
@@ -164,12 +177,13 @@ public class LanguagePreference {
    * null if it does not match at all. Lower keys rank better.
    *
    * <p>The tag is first <em>bound</em> to the single preference entry it matches most specifically:
-   * among all matching entries (exact or cascade), the one with the longest tag is chosen, so a tag
-   * of {@code en-GB} binds to a listed {@code en-GB} rather than to a broader {@code en}, and a tag
-   * of {@code en-GB-scouse} binds to a listed {@code en-GB} rather than to {@code en}. This is what
-   * lets a specific tag be "deprioritized" by listing it after a general one: with {@code en,
-   * en-GB} an {@code en-GB} label binds to the second entry, while an {@code en-US} label binds (by
-   * cascade) to the first.
+   * among all matching entries (exact, cascade, or the {@link #WILDCARD}), the one with the longest
+   * tag is chosen, so a tag of {@code en-GB} binds to a listed {@code en-GB} rather than to a
+   * broader {@code en}, and a tag of {@code en-GB-scouse} binds to a listed {@code en-GB} rather
+   * than to {@code en}. This is what lets a specific tag be "deprioritized" by listing it after a
+   * general one: with {@code en, en-GB} an {@code en-GB} label binds to the second entry, while an
+   * {@code en-US} label binds (by cascade) to the first. The {@link #WILDCARD} matches any tag but
+   * is less specific than every real tag, so a concrete match always binds in preference to it.
    *
    * <p>The returned key then ranks that binding for the cross-value comparison, components in
    * order:
@@ -190,20 +204,29 @@ public class LanguagePreference {
     String lowerLang = lang.toLowerCase(Locale.ROOT);
     int bestIndex = -1;
     int bestType = 0;
-    int bestSpecificity = -1; // length of the matched preference tag; longer = more specific
+    // Length of the matched preference tag; longer = more specific. The wildcard is less specific
+    // than any real tag (including the empty "none" tag, whose length is 0), so it uses -1; the
+    // initial "nothing matched yet" value must be lower still.
+    int bestSpecificity = Integer.MIN_VALUE;
     for (int i = 0; i < preferredLangs.size(); i++) {
       String pref = preferredLangs.get(i).toLowerCase(Locale.ROOT);
       int type;
-      if (lowerLang.equals(pref)) {
+      int specificity;
+      if (pref.equals(WILDCARD)) {
+        // RFC 4647 basic filtering: "*" matches any tag. Least specific, and never an exact match.
+        type = 1;
+        specificity = -1;
+      } else if (lowerLang.equals(pref)) {
         type = 0; // exact
+        specificity = pref.length();
       } else if (!pref.isEmpty() && lowerLang.startsWith(pref + "-")) {
         type = 1; // cascade: a broader preference matches a more specific tag
+        specificity = pref.length();
       } else {
         continue;
       }
       // Bind the tag to the most specific entry it matches. On a specificity tie prefer an exact
       // match; iterating in order keeps the earliest entry when everything else is equal.
-      int specificity = pref.length();
       if (specificity > bestSpecificity || (specificity == bestSpecificity && type < bestType)) {
         bestSpecificity = specificity;
         bestType = type;
