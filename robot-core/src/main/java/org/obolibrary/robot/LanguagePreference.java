@@ -11,15 +11,18 @@ import java.util.Locale;
  * <p>Given a set of candidate values (each with a language tag), selection proceeds as:
  *
  * <ol>
- *   <li>Prefer a value whose language tag matches an entry earlier in the preference list.
- *   <li>An <em>exact</em> language-tag match is preferred over a <em>cascade</em> match (e.g. a
- *       preference of {@code en} matches a value tagged {@code en-GB}); among cascade matches, a
- *       more specific preference entry (e.g. {@code en-GB}) is preferred over a less specific one
- *       (e.g. {@code en}). Consequently {@code en} only "captures" {@code en-GB} when {@code en-GB}
- *       is not itself listed.
- *   <li>Among values that tie on language, the alphanumerically-first value is chosen (a
- *       deterministic tie-break, matching ROBOT's existing convention in {@code
- *       OntologyHelper.getAnnotationString}).
+ *   <li>Each value is <em>bound</em> to the preference entry its language tag matches most
+ *       specifically. A match is either <em>exact</em> (equal tags) or a <em>cascade</em>, in which
+ *       a broader entry matches a more specific tag (e.g. {@code en} matches {@code en-GB}); when a
+ *       tag matches several entries, the longest (most specific) entry wins. So with {@code en,
+ *       en-GB} a value tagged {@code en-GB} binds to the {@code en-GB} entry, while a value tagged
+ *       {@code en-US} binds by cascade to {@code en}.
+ *   <li>The value bound to the <em>earliest</em> entry in the list wins. Listing a specific tag
+ *       after a general one therefore deprioritizes it: with {@code en, en-GB}, {@code en-GB}
+ *       labels are used only when nothing binds to {@code en}.
+ *   <li>Among values bound to the same entry, an exact match beats a cascade match; if they still
+ *       tie, the alphanumerically-first value is chosen (a deterministic tie-break, matching
+ *       ROBOT's existing convention in {@code OntologyHelper.getAnnotationString}).
  *   <li>If no value matches any preferred language but at least one value exists, the
  *       alphanumerically-first value is chosen, so that a labelled entity never regresses to its
  *       IRI merely because its language is unlisted.
@@ -158,13 +161,23 @@ public class LanguagePreference {
 
   /**
    * Compute a sortable ranking key describing how well a language tag matches a preference list, or
-   * null if it does not match at all. Lower keys rank better. The key components are, in order:
+   * null if it does not match at all. Lower keys rank better.
+   *
+   * <p>The tag is first <em>bound</em> to the single preference entry it matches most specifically:
+   * among all matching entries (exact or cascade), the one with the longest tag is chosen, so a tag
+   * of {@code en-GB} binds to a listed {@code en-GB} rather than to a broader {@code en}, and a tag
+   * of {@code en-GB-scouse} binds to a listed {@code en-GB} rather than to {@code en}. This is what
+   * lets a specific tag be "deprioritized" by listing it after a general one: with {@code en,
+   * en-GB} an {@code en-GB} label binds to the second entry, while an {@code en-US} label binds (by
+   * cascade) to the first.
+   *
+   * <p>The returned key then ranks that binding for the cross-value comparison, components in
+   * order:
    *
    * <ol>
-   *   <li>match type: 0 for an exact match, 1 for a cascade (prefix) match;
-   *   <li>specificity: 0 for exact, otherwise the negated length of the matching prefix so that a
-   *       longer (more specific) preference entry ranks better;
-   *   <li>the index of the matching entry in the preference list.
+   *   <li>the index of the bound entry, so that a label bound to an earlier entry wins;
+   *   <li>match type: 0 for an exact match, 1 for a cascade (prefix) match, so that two labels
+   *       bound to the same entry prefer the exact one.
    * </ol>
    *
    * @param lang the language tag to score (the empty string for no language tag)
@@ -175,24 +188,32 @@ public class LanguagePreference {
     // Language tags are case-insensitive (BCP 47), and the OWL API reports them in lower case, so
     // compare case-insensitively.
     String lowerLang = lang.toLowerCase(Locale.ROOT);
-    int[] best = null;
+    int bestIndex = -1;
+    int bestType = 0;
+    int bestSpecificity = -1; // length of the matched preference tag; longer = more specific
     for (int i = 0; i < preferredLangs.size(); i++) {
       String pref = preferredLangs.get(i).toLowerCase(Locale.ROOT);
-      int[] key;
+      int type;
       if (lowerLang.equals(pref)) {
-        // Exact match.
-        key = new int[] {0, 0, i};
+        type = 0; // exact
       } else if (!pref.isEmpty() && lowerLang.startsWith(pref + "-")) {
-        // Cascade match: a broader preference matches a more specific tag.
-        key = new int[] {1, -pref.length(), i};
+        type = 1; // cascade: a broader preference matches a more specific tag
       } else {
         continue;
       }
-      if (best == null || compare(key, best) < 0) {
-        best = key;
+      // Bind the tag to the most specific entry it matches. On a specificity tie prefer an exact
+      // match; iterating in order keeps the earliest entry when everything else is equal.
+      int specificity = pref.length();
+      if (specificity > bestSpecificity || (specificity == bestSpecificity && type < bestType)) {
+        bestSpecificity = specificity;
+        bestType = type;
+        bestIndex = i;
       }
     }
-    return best;
+    if (bestIndex < 0) {
+      return null;
+    }
+    return new int[] {bestIndex, bestType};
   }
 
   /**

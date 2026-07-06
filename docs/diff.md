@@ -44,9 +44,10 @@ When an entity has labels in more than one language, you can control which one i
 
 Here the `dog` class carries `de`, `en`, and `en-GB` labels; with `en-GB,en` its British label `hound` is chosen. Selection rules:
 
-- The first language in the list that has a matching label wins. A more general tag matches a more specific one — for example, `en` matches `en-GB` — unless the specific tag is itself listed.
+- A more general tag matches a more specific one — for example, `en` matches a label tagged `en-GB`. Each label is bound to the *most specific* tag in your list that it matches, and the label bound to the *earliest* listed tag wins.
+- Listing a specific tag after a general one deprioritizes it. With `en,en-GB`, a label tagged `en-GB` binds to `en-GB` (position 2), while a label tagged `en-US` binds to `en` (position 1, by cascade) — so the `en-US` label is shown. To prefer British labels instead, list `en-GB` first.
 - Use the token `none` to prefer labels that have no language tag (for example, `--label-langs-priority en,none`).
-- When more than one label matches (for example, two labels tagged `en`), the alphabetically first is chosen.
+- When more than one label is bound to the winning tag (for example, two labels tagged `en`), the alphabetically first is chosen.
 - If an entity has labels but none in a preferred language, its alphabetically first label is used, so a labelled entity is never shown as its IRI. Entities with no label at all are unaffected.
 
 This option currently applies only to the `pretty` format; the `markdown` and `html` formats are not yet affected.

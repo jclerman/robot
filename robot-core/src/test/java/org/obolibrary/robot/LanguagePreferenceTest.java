@@ -51,24 +51,70 @@ public class LanguagePreferenceTest {
     assertEquals("colour", LanguagePreference.selectValue(cs, Collections.singletonList("en")));
   }
 
-  /** An exact match beats a cascade match regardless of list position. */
+  /** Within a single preference entry, an exact match beats a cascade match. */
   @Test
   public void testExactBeatsCascade() {
-    List<LanguagePreference.Candidate> cs = candidates("en-GB", "colour", "en", "generic");
-    // "en" (index 0) cascades to en-GB, but the exact "en-GB" (index 1) wins.
-    assertEquals("generic", LanguagePreference.selectValue(cs, Arrays.asList("en", "en-GB")));
-    // The en-GB literal should be attributed to its own exact entry, not swept up by "en".
+    // Preferring just "en": the bare-"en" label matches exactly, while the en-US label only
+    // cascades from "en". Both attach to the same (only) entry, so the exact match wins.
+    List<LanguagePreference.Candidate> cs = candidates("en", "generic", "en-US", "regional");
+    assertEquals("generic", LanguagePreference.selectValue(cs, Collections.singletonList("en")));
+    // With "en,en-GB" and only an en-GB label present, it is matched by its own entry.
     List<LanguagePreference.Candidate> gbOnly = candidates("en-GB", "colour");
     assertEquals("colour", LanguagePreference.selectValue(gbOnly, Arrays.asList("en", "en-GB")));
   }
 
-  /** Among cascade matches, the more specific preference entry wins. */
+  // A GB/US pair whose values are chosen so the en-GB label ("aluminium") sorts alphabetically
+  // *before* the en-US label ("aluminum"). This makes the tie-break discriminating: a broken
+  // implementation that merged both regions and fell back to alpha order would return the GB label,
+  // so asserting the US label proves the region logic (not the alpha accident) is doing the work.
+  private static List<LanguagePreference.Candidate> gbUsCandidates() {
+    return candidates("en-GB", "aluminium", "en-US", "aluminum");
+  }
+
+  /** An exact regional preference selects that region only, never the sibling region. */
   @Test
-  public void testCascadeSpecificity() {
-    List<LanguagePreference.Candidate> cs = candidates("en-GB-oxendict", "posh");
-    // Both "en" and "en-GB" cascade; the more specific "en-GB" should be chosen even though "en"
-    // appears earlier in the list.
-    assertEquals("posh", LanguagePreference.selectValue(cs, Arrays.asList("en", "en-GB")));
+  public void testExactRegionalPreference() {
+    assertEquals(
+        "aluminum",
+        LanguagePreference.selectValue(gbUsCandidates(), Collections.singletonList("en-US")));
+    assertEquals(
+        "aluminium",
+        LanguagePreference.selectValue(gbUsCandidates(), Collections.singletonList("en-GB")));
+  }
+
+  /**
+   * A broad entry cascades only to the region that is <em>not</em> itself listed; a listed region
+   * stays bound to its own (lower-priority) entry.
+   */
+  @Test
+  public void testBroadPreferenceSkipsListedRegion() {
+    // "en" (index 0) cascades to en-US (which is not listed), while en-GB is reserved for its own
+    // entry at index 1. Because the first matching entry wins, the en-US label is chosen even
+    // though it sorts after the en-GB label.
+    assertEquals(
+        "aluminum", LanguagePreference.selectValue(gbUsCandidates(), Arrays.asList("en", "en-GB")));
+  }
+
+  /** With only a broad entry and no listed region, both regions cascade and alpha order decides. */
+  @Test
+  public void testBroadPreferenceAmongRegionsUsesAlphaTieBreak() {
+    assertEquals(
+        "aluminium",
+        LanguagePreference.selectValue(gbUsCandidates(), Collections.singletonList("en")));
+  }
+
+  /**
+   * A tag binds to its most specific matching entry even when that tag is not itself listed. With
+   * {@code en,en-GB}, a tag of {@code en-GB-scouse} binds (by cascade) to the more specific {@code
+   * en-GB} entry rather than to the earlier {@code en}, so an {@code en-US} label — which can only
+   * bind to {@code en} — is preferred.
+   */
+  @Test
+  public void testMostSpecificCascadeBinding() {
+    // Values are chosen so that a naive "earliest matching entry, then alphabetical" rule would
+    // wrongly return "aaa" (the en-GB-scouse label).
+    List<LanguagePreference.Candidate> cs = candidates("en-GB-scouse", "aaa", "en-US", "zzz");
+    assertEquals("zzz", LanguagePreference.selectValue(cs, Arrays.asList("en", "en-GB")));
   }
 
   /** The no-lang token matches an untagged literal. */
