@@ -36,13 +36,13 @@ The default "plain" output is in OWL Functional syntax with IRIs. You can includ
 
 When an entity has labels in more than one language, you can control which one is shown in the `pretty` format with `--label-langs-priority`, a comma-separated list of [language tags](https://www.rfc-editor.org/info/bcp47) in priority order:
 
-    robot diff --left edit.owl \
-      --right release.owl \
-      --labels true \
-      --label-langs-priority en-GB,en,fr \
-      --output results/release-diff.txt
+    robot diff --left lang-left.owl \
+      --right lang-right.owl \
+      --format pretty \
+      --label-langs-priority en-GB,en \
+      --output results/lang-diff.txt
 
-Selection rules:
+Here the `dog` class carries `de`, `en`, and `en-GB` labels; with `en-GB,en` its British label `hound` is chosen. Selection rules:
 
 - The first language in the list that has a matching label wins. A more general tag matches a more specific one — for example, `en` matches `en-GB` — unless the specific tag is itself listed.
 - Use the token `none` to prefer labels that have no language tag (for example, `--label-langs-priority en,none`).

@@ -121,6 +121,46 @@ public class DiffOperationTest extends CoreTest {
   }
 
   /**
+   * Confirm that a language preference is honored when labels are requested via {@code --labels
+   * true} (with the default "plain" format) rather than by explicitly selecting the "pretty"
+   * format. Internally {@code labels=true} upgrades "plain" to "pretty", so the language preference
+   * must take effect the same way.
+   *
+   * @throws IOException on file problem
+   * @throws OWLOntologyCreationException on ontology problem
+   */
+  @Test
+  public void testCompareWithLanguagePreferenceViaLabelsOption()
+      throws IOException, OWLOntologyCreationException {
+    String base = "http://example.org/";
+    OWLClass dog = OWLManager.getOWLDataFactory().getOWLClass(IRI.create(base + "dog"));
+    OWLClass puppy = OWLManager.getOWLDataFactory().getOWLClass(IRI.create(base + "puppy"));
+
+    OWLOntology left = buildLangOntology(base + "lang-left.owl", dog, puppy, true);
+    OWLOntology right = buildLangOntology(base + "lang-right.owl", dog, puppy, false);
+
+    // Request labels with --labels true (no explicit --format); German preference selects "Hund".
+    StringWriter deWriter = new StringWriter();
+    Map<String, String> deOptions = new HashMap<>();
+    deOptions.put("labels", "true");
+    deOptions.put(LanguagePreference.OPTION_NAME, "de");
+    DiffOperation.compare(left, right, new IOHelper(), deWriter, deOptions);
+    String deOutput = deWriter.toString();
+    assertTrue("expected German label in output:\n" + deOutput, deOutput.contains("Hund"));
+    assertFalse("did not expect English label:\n" + deOutput, deOutput.contains("Canine"));
+
+    // The same input with an English preference selects "Canine".
+    StringWriter enWriter = new StringWriter();
+    Map<String, String> enOptions = new HashMap<>();
+    enOptions.put("labels", "true");
+    enOptions.put(LanguagePreference.OPTION_NAME, "en");
+    DiffOperation.compare(left, right, new IOHelper(), enWriter, enOptions);
+    String enOutput = enWriter.toString();
+    assertTrue("expected English label in output:\n" + enOutput, enOutput.contains("Canine"));
+    assertFalse("did not expect German label:\n" + enOutput, enOutput.contains("Hund"));
+  }
+
+  /**
    * Build a small ontology whose "dog" class carries a German and an English label. When {@code
    * withSubClass} is true, "puppy" is asserted to be a subclass of "dog" (the axiom that will
    * differ between the two ontologies).
